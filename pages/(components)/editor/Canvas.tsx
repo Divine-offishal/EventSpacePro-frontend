@@ -39,6 +39,10 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
   const isDrawing = useSceneStore((s) => s.isDrawing);
   const currentPath = useSceneStore((s) => s.currentPath);
   const tempPath = useSceneStore((s) => s.tempPath);
+  const wallDrawingMode = useSceneStore((s) => s.wallDrawingMode);
+  const currentWallSegments = useSceneStore((s) => s.currentWallSegments);
+  const currentWallStart = useSceneStore((s) => s.currentWallStart);
+  const currentWallTempEnd = useSceneStore((s) => s.currentWallTempEnd);
   const setPenMode = useSceneStore((s) => s.setPenMode);
   const setWallMode = useSceneStore((s) => s.setWallMode);
   const setIsDrawing = useSceneStore((s) => s.setIsDrawing);
@@ -46,6 +50,12 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
   const setTempPath = useSceneStore((s) => s.setTempPath);
   const addPointToPath = useSceneStore((s) => s.addPointToPath);
   const clearPath = useSceneStore((s) => s.clearPath);
+  const setWallDrawingMode = useSceneStore((s) => s.setWallDrawingMode);
+  const startWallSegment = useSceneStore((s) => s.startWallSegment);
+  const updateWallTempEnd = useSceneStore((s) => s.updateWallTempEnd);
+  const commitWallSegment = useSceneStore((s) => s.commitWallSegment);
+  const finishWallDrawing = useSceneStore((s) => s.finishWallDrawing);
+  const cancelWallDrawing = useSceneStore((s) => s.cancelWallDrawing);
   const copyAsset = useSceneStore((s) => s.copyAsset);
   const pasteAsset = useSceneStore((s) => s.pasteAsset);
   const clipboard = useSceneStore((s) => s.clipboard);
@@ -102,6 +112,7 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
   const scaleHandleType = useRef<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null>(null);
   const heightHandleType = useRef<'top' | 'bottom' | null>(null);
   const currentDrawingPath = useRef<{ x: number; y: number }[]>([]);
+  const lastMousePosition = useRef({ x: 0, y: 0 });
 
   const [rotation, setRotation] = useState<number>(0);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
@@ -129,6 +140,7 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
     const yMm = (uy + halfHscreen) / (mmToPx * workspaceZoom);
     return { x: xMm, y: yMm };
   }, [effectiveWidthMm, effectiveHeightMm, canvasPxW, canvasPxH, workspaceZoom, mmToPx, rotation]);
+
 
   // Function to straighten a path if it's close to being a straight line
   const straightenPath = useCallback((path: { x: number; y: number }[]) => {
@@ -176,6 +188,8 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
+      // Store mouse position for use in mouse up handler
+      lastMousePosition.current = { x: e.clientX, y: e.clientY };
       if (isRotatingAsset.current && selectedAssetId) {
         const asset = assets.find((a) => a.id === selectedAssetId);
         if (asset) {
@@ -240,6 +254,27 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
         setCurrentPath(currentDrawingPath.current);
         setTempPath([...currentDrawingPath.current]); // Create a new array to ensure re-render
         console.log('Drawing point:', { x, y }, 'Path length:', currentDrawingPath.current.length);
+        return;
+      }
+
+      // Handle wall drawing mode mouse movement
+      if (wallDrawingMode && currentWallStart) {
+        // Check if mouse is over the canvas element
+        const canvasElement = canvasRef.current;
+        if (!canvasElement) return;
+        
+        const rect = canvasElement.getBoundingClientRect();
+        const isOverCanvas = e.clientX >= rect.left && e.clientX <= rect.right && 
+                            e.clientY >= rect.top && e.clientY <= rect.bottom;
+        
+        if (!isOverCanvas) return; // Don't update temp end if mouse is outside canvas
+        
+        const { x, y } = clientToCanvasMM(e.clientX, e.clientY);
+        
+        // Check if mouse is within canvas bounds
+        if (canvas && (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height)) {
+          updateWallTempEnd({ x, y });
+        }
         return;
       }
 
@@ -334,6 +369,23 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
         setWallMode(false);
       }
 
+      // Handle wall drawing mode mouse up
+      if (wallDrawingMode && currentWallStart && currentWallTempEnd) {
+        // Check if mouse was over the canvas when released
+        const canvasElement = canvasRef.current;
+        if (canvasElement) {
+          const rect = canvasElement.getBoundingClientRect();
+          const isOverCanvas = lastMousePosition.current.x >= rect.left && lastMousePosition.current.x <= rect.right && 
+                              lastMousePosition.current.y >= rect.top && lastMousePosition.current.y <= rect.bottom;
+          
+          if (isOverCanvas) {
+            commitWallSegment();
+          } else {
+            console.log('Mouse released outside canvas, not committing wall segment');
+          }
+        }
+      }
+
       draggingAssetRef.current = null;
       isMovingCanvas.current = false;
       isScalingAsset.current = false;
@@ -354,14 +406,25 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-  }, [workspaceZoom, mmToPx, rotation, updateAsset, setCanvasPos, selectedAssetId, clientToCanvasMM, isDrawing, isPenMode, isWallMode, setCurrentPath, setTempPath, clearPath, setPenMode, setWallMode, straightenPath]);
+  }, [workspaceZoom, mmToPx, rotation, updateAsset, setCanvasPos, selectedAssetId, clientToCanvasMM, isDrawing, isPenMode, isWallMode, setCurrentPath, setTempPath, clearPath, setPenMode, setWallMode, straightenPath, wallDrawingMode, currentWallStart, currentWallTempEnd, updateWallTempEnd, commitWallSegment]);
 
-  // Keyboard event handlers for copy/paste
+  // Keyboard event handlers for copy/paste and wall drawing
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle copy/paste if we're not in a text input or textarea
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Handle wall drawing mode
+      if (wallDrawingMode && e.key === 'Escape') {
+        e.preventDefault();
+        if (currentWallSegments.length > 0) {
+          finishWallDrawing();
+        } else {
+          cancelWallDrawing();
+        }
         return;
       }
 
@@ -381,7 +444,7 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedAssetId, clipboard, copyAsset, pasteAsset]);
+  }, [selectedAssetId, clipboard, copyAsset, pasteAsset, wallDrawingMode, currentWallSegments, finishWallDrawing, cancelWallDrawing]);
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -546,6 +609,20 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
         case 'bottom-right':
           return { x: asset.x + totalWidth / 2 + 6, y: asset.y + totalHeight / 2 + 6 };
       }
+    } else if (asset.type === "wall-segments") {
+      // For wall segments, use a fixed bounding box since segments can be any shape
+      const boundingSize = 200 * asset.scale;
+      
+      switch (handleType) {
+        case 'top-left':
+          return { x: asset.x - boundingSize / 2 - 6, y: asset.y - boundingSize / 2 - 6 };
+        case 'top-right':
+          return { x: asset.x + boundingSize / 2 + 6, y: asset.y - boundingSize / 2 - 6 };
+        case 'bottom-left':
+          return { x: asset.x - boundingSize / 2 - 6, y: asset.y + boundingSize / 2 + 6 };
+        case 'bottom-right':
+          return { x: asset.x + boundingSize / 2 + 6, y: asset.y + boundingSize / 2 + 6 };
+      }
     } else if (asset.type === "text") {
       // For text, estimate size based on text content and font size
       const fontSize = (asset.fontSize ?? 16) * asset.scale;
@@ -607,6 +684,14 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
       return { 
         x: asset.x, 
         y: asset.y - totalHeight / 2 - handleOffset 
+      };
+    } else if (asset.type === "wall-segments") {
+      // For wall segments, use a fixed bounding box since segments can be any shape
+      const boundingSize = 200 * asset.scale;
+      
+      return { 
+        x: asset.x, 
+        y: asset.y - boundingSize / 2 - handleOffset 
       };
     } else if (asset.type === "text") {
       const fontSize = (asset.fontSize ?? 16) * asset.scale;
@@ -1235,6 +1320,137 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
           />
         </>
       );
+    } else if (asset.type === "wall-segments") {
+      // For wall segments, use a fixed bounding box since segments can be any shape
+      const boundingSize = 200 * asset.scale;
+      
+      const topLeftPx = { 
+        x: assetCenterPx.x - boundingSize / 2 - 6, 
+        y: assetCenterPx.y - boundingSize / 2 - 6 
+      };
+      const topRightPx = { 
+        x: assetCenterPx.x + boundingSize / 2 + 6, 
+        y: assetCenterPx.y - boundingSize / 2 - 6 
+      };
+      const bottomLeftPx = { 
+        x: assetCenterPx.x - boundingSize / 2 - 6, 
+        y: assetCenterPx.y + boundingSize / 2 + 6 
+      };
+      const bottomRightPx = { 
+        x: assetCenterPx.x + boundingSize / 2 + 6, 
+        y: assetCenterPx.y + boundingSize / 2 + 6 
+      };
+      const rotationHandlePx = { 
+        x: assetCenterPx.x, 
+        y: assetCenterPx.y - boundingSize / 2 - 30 
+      };
+
+      return (
+        <>
+          {/* Corner scaling handles for wall-segments */}
+          <div
+            onMouseDown={(e) => onScaleHandleMouseDown(e, asset.id, 'top-left')}
+            style={{
+              position: "absolute",
+              left: topLeftPx.x,
+              top: topLeftPx.y,
+              width: handleSize,
+              height: handleSize,
+              backgroundColor: "#3B82F6",
+              border: "2px solid white",
+              borderRadius: "2px",
+              cursor: "nw-resize",
+              zIndex: 10,
+            }}
+            className="hover:bg-blue-600 transition-colors"
+            title="Scale"
+          />
+          <div
+            onMouseDown={(e) => onScaleHandleMouseDown(e, asset.id, 'top-right')}
+            style={{
+              position: "absolute",
+              left: topRightPx.x,
+              top: topRightPx.y,
+              width: handleSize,
+              height: handleSize,
+              backgroundColor: "#3B82F6",
+              border: "2px solid white",
+              borderRadius: "2px",
+              cursor: "ne-resize",
+              zIndex: 10,
+            }}
+            className="hover:bg-blue-600 transition-colors"
+            title="Scale"
+          />
+          <div
+            onMouseDown={(e) => onScaleHandleMouseDown(e, asset.id, 'bottom-left')}
+            style={{
+              position: "absolute",
+              left: bottomLeftPx.x,
+              top: bottomLeftPx.y,
+              width: handleSize,
+              height: handleSize,
+              backgroundColor: "#3B82F6",
+              border: "2px solid white",
+              borderRadius: "2px",
+              cursor: "sw-resize",
+              zIndex: 10,
+            }}
+            className="hover:bg-blue-600 transition-colors"
+            title="Scale"
+          />
+          <div
+            onMouseDown={(e) => onScaleHandleMouseDown(e, asset.id, 'bottom-right')}
+            style={{
+              position: "absolute",
+              left: bottomRightPx.x,
+              top: bottomRightPx.y,
+              width: handleSize,
+              height: handleSize,
+              backgroundColor: "#3B82F6",
+              border: "2px solid white",
+              borderRadius: "2px",
+              cursor: "se-resize",
+              zIndex: 10,
+            }}
+            className="hover:bg-blue-600 transition-colors"
+            title="Scale"
+          />
+          
+          {/* Rotation line and handle */}
+          <div
+            style={{
+              position: "absolute",
+              left: assetCenterPx.x,
+              top: assetCenterPx.y,
+              width: 2,
+              height: 30,
+              backgroundColor: "#3B82F6",
+              transformOrigin: "bottom center",
+              transform: `translate(-50%, -50%)`,
+              zIndex: 9,
+            }}
+          />
+          <div
+            onMouseDown={(e) => onRotationHandleMouseDown(e, asset.id)}
+            style={{
+              position: "absolute",
+              left: rotationHandlePx.x,
+              top: rotationHandlePx.y,
+              width: handleSize,
+              height: handleSize,
+              backgroundColor: "#3B82F6",
+              border: "2px solid white",
+              borderRadius: "50%",
+              cursor: "grab",
+              zIndex: 10,
+              transform: "translate(-50%, -50%)",
+            }}
+            className="hover:bg-blue-600 transition-colors"
+            title="Rotate"
+          />
+        </>
+      );
     } else if (asset.type === "text") {
       // For text, estimate size based on text content and font size
       const fontSize = (asset.fontSize ?? 16) * asset.scale;
@@ -1645,7 +1861,7 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
   return (
     <div
       ref={canvasRef}
-      className={`relative ${canvas ? 'bg-white border shadow-md' : 'bg-transparent'} ${(isPenMode || isWallMode) ? 'cursor-crosshair' : ''}`}
+      className={`relative ${canvas ? 'bg-white border shadow-md' : 'bg-transparent'} ${(isPenMode || isWallMode || wallDrawingMode) ? 'cursor-crosshair' : ''}`}
       style={{ width: canvasPxW, height: canvasPxH, transform: `rotate(${rotation}deg)`, transformOrigin: "center center" }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -1663,6 +1879,31 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
             setTempPath([{ x, y }]);
             console.log('Started drawing at:', { x, y });
             return; // Prevent canvas movement when in pen mode
+          } else if (wallDrawingMode) {
+            // Check if the click target is the canvas itself (not a child element like sidebar buttons)
+            if (e.target !== canvasRef.current) {
+              console.log('Click not on canvas element, ignoring wall drawing');
+              return;
+            }
+            
+            e.stopPropagation();
+            const { x, y } = clientToCanvasMM(e.clientX, e.clientY);
+            
+            // Check if click is within canvas bounds
+            if (canvas && (x < 0 || y < 0 || x > canvas.width || y > canvas.height)) {
+              console.log('Click outside canvas bounds, ignoring');
+              return; // Don't create wall segments outside canvas
+            }
+            
+            if (!currentWallStart) {
+              // Start new wall segment
+              startWallSegment({ x, y });
+              console.log('Started wall segment at:', { x, y });
+            } else {
+              // This will be handled by the mouse up event to commit the current segment
+              console.log('Continuing wall segment at:', { x, y });
+            }
+            return; // Prevent canvas movement when in wall mode
           } else {
             selectAsset(null);
             e.stopPropagation();
@@ -1722,6 +1963,163 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
               fill="none"
               strokeLinecap="round"
               strokeLinejoin="round"
+            />
+          )}
+        </svg>
+      )}
+
+      {/* Wall Drawing Visual Feedback */}
+      {wallDrawingMode && (
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width={canvasPxW}
+          height={canvasPxH}
+          style={{ zIndex: 5 }}
+        >
+          {/* Render completed wall segments */}
+          {currentWallSegments.length > 0 && (() => {
+            const wallThickness = 2;
+            const wallGap = 8 * mmToPx; // 8mm gap
+            
+            // Create continuous path for entire wall structure
+            const outerPath = '';
+            const innerPath = '';
+            
+            // Build wall geometry with proper corner handling
+            const wallPoints: Array<{
+              start: { x: number; y: number };
+              end: { x: number; y: number };
+              perpX: number;
+              perpY: number;
+              angle: number;
+              index: number;
+            }> = [];
+            
+            currentWallSegments.forEach((segment, index) => {
+              const dx = segment.end.x - segment.start.x;
+              const dy = segment.end.y - segment.start.y;
+              const length = Math.sqrt(dx * dx + dy * dy);
+              
+              if (length === 0) return;
+              
+              // Calculate angle and perpendicular (convert to pixels)
+              const angle = Math.atan2(dy, dx);
+              const perpX = Math.cos(angle + Math.PI / 2) * (wallGap / 2);
+              const perpY = Math.sin(angle + Math.PI / 2) * (wallGap / 2);
+              
+              // Store wall geometry points
+              wallPoints.push({
+                start: { x: segment.start.x * mmToPx, y: segment.start.y * mmToPx },
+                end: { x: segment.end.x * mmToPx, y: segment.end.y * mmToPx },
+                perpX, perpY, angle, index
+              });
+            });
+            
+            // Render each wall segment as a simple rectangle
+            const wallSegments = [];
+            
+            for (let i = 0; i < wallPoints.length; i++) {
+              const current = wallPoints[i];
+              
+              // Calculate the four corners of the wall rectangle
+              const outerStartX = current.start.x + current.perpX;
+              const outerStartY = current.start.y + current.perpY;
+              const outerEndX = current.end.x + current.perpX;
+              const outerEndY = current.end.y + current.perpY;
+              
+              const innerStartX = current.start.x - current.perpX;
+              const innerStartY = current.start.y - current.perpY;
+              const innerEndX = current.end.x - current.perpX;
+              const innerEndY = current.end.y - current.perpY;
+              
+              // Create rectangle path for this wall segment
+              const wallRectPath = `M ${outerStartX} ${outerStartY} L ${outerEndX} ${outerEndY} L ${innerEndX} ${innerEndY} L ${innerStartX} ${innerStartY} Z`;
+              
+              wallSegments.push(
+                <path
+                  key={`wall-segment-${i}`}
+                  d={wallRectPath}
+                  fill="none"
+                  stroke="#3B82F6"
+                  strokeWidth={wallThickness}
+                />
+              );
+            }
+            
+            return (
+              <g>
+                {wallSegments}
+              </g>
+            );
+          })()}
+          
+          {/* Render current wall segment being drawn */}
+          {currentWallStart && currentWallTempEnd && (() => {
+            const dx = currentWallTempEnd.x - currentWallStart.x;
+            const dy = currentWallTempEnd.y - currentWallStart.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            if (length === 0) return null;
+            
+            // Calculate angle and perpendicular (convert to pixels)
+            const angle = Math.atan2(dy, dx);
+            const wallGap = 8 * mmToPx; // 8mm gap
+            const perpX = Math.cos(angle + Math.PI / 2) * (wallGap / 2);
+            const perpY = Math.sin(angle + Math.PI / 2) * (wallGap / 2);
+            
+            // Outer wall points (one side of the wall) - convert to pixels
+            const outerStartX = currentWallStart.x * mmToPx + perpX;
+            const outerStartY = currentWallStart.y * mmToPx + perpY;
+            const outerEndX = currentWallTempEnd.x * mmToPx + perpX;
+            const outerEndY = currentWallTempEnd.y * mmToPx + perpY;
+            
+            // Inner wall points (other side of the wall) - convert to pixels
+            const innerStartX = currentWallStart.x * mmToPx - perpX;
+            const innerStartY = currentWallStart.y * mmToPx - perpY;
+            const innerEndX = currentWallTempEnd.x * mmToPx - perpX;
+            const innerEndY = currentWallTempEnd.y * mmToPx - perpY;
+            
+            return (
+              <g>
+                {/* Outer wall line */}
+                <line
+                  x1={outerStartX}
+                  y1={outerStartY}
+                  x2={outerEndX}
+                  y2={outerEndY}
+                  stroke="#3B82F6"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray="5,5"
+                  opacity="0.7"
+                />
+                {/* Inner wall line */}
+                <line
+                  x1={innerStartX}
+                  y1={innerStartY}
+                  x2={innerEndX}
+                  y2={innerEndY}
+                  stroke="#3B82F6"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray="5,5"
+                  opacity="0.7"
+                />
+              </g>
+            );
+          })()}
+          
+          {/* Render start point */}
+          {currentWallStart && (
+            <circle
+              cx={currentWallStart.x * mmToPx}
+              cy={currentWallStart.y * mmToPx}
+              r="3"
+              fill="#3B82F6"
+              stroke="white"
+              strokeWidth="1"
             />
           )}
         </svg>
@@ -1986,6 +2384,129 @@ export default function Canvas({ workspaceZoom, mmToPx, canvasPos, setCanvasPos,
                       strokeLinejoin="round"
                     />
                   )}
+                </svg>
+              </div>
+              
+              {/* Handles */}
+              {isSelected && renderAssetHandles(asset, leftPx, topPx)}
+            </div>
+          );
+        }
+
+        if (asset.type === "wall-segments") {
+          return (
+            <div key={asset.id} className="relative">
+              {/* Background layer */}
+              {asset.backgroundColor && asset.backgroundColor !== "transparent" && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: leftPx,
+                    top: topPx,
+                    width: 200,
+                    height: 200,
+                    backgroundColor: asset.backgroundColor,
+                    transform: `translate(-50%, -50%) rotate(${totalRotation}deg)`,
+                    zIndex: -1,
+                  }}
+                />
+              )}
+              
+              {/* Main wall segments */}
+              <div
+                onMouseDown={(e) => onAssetMouseDown(e, asset.id)}
+                style={{
+                  position: "absolute",
+                  left: leftPx,
+                  top: topPx,
+                  transform: `translate(-50%, -50%) rotate(${totalRotation}deg)`,
+                  cursor: "move",
+                  boxShadow: isCopied ? "0 0 10px rgba(34, 197, 94, 0.8)" : undefined,
+                  transition: isCopied ? "box-shadow 0.3s ease" : undefined,
+                }}
+                className={isSelected ? "" : ""}
+              >
+                <svg
+                  width="200"
+                  height="200"
+                  viewBox="-100 -100 200 200"
+                  style={{ overflow: "visible" }}
+                >
+                  {asset.wallSegments && asset.wallSegments.length > 0 && (() => {
+                    const wallThickness = (asset.wallThickness ?? 2) * asset.scale;
+                    const wallGap = (asset.wallGap ?? 8) * asset.scale;
+                    
+                    // Create continuous path for entire wall structure
+                    const outerPath = '';
+                    const innerPath = '';
+                    
+                    // Build wall geometry with proper corner handling
+                    const wallPoints: Array<{
+                      start: { x: number; y: number };
+                      end: { x: number; y: number };
+                      perpX: number;
+                      perpY: number;
+                      angle: number;
+                      index: number;
+                    }> = [];
+                    
+                    asset.wallSegments.forEach((segment, index) => {
+                      const dx = segment.end.x - segment.start.x;
+                      const dy = segment.end.y - segment.start.y;
+                      const length = Math.sqrt(dx * dx + dy * dy);
+                      
+                      if (length === 0) return;
+                      
+                      // Calculate angle and perpendicular
+                      const angle = Math.atan2(dy, dx);
+                      const perpX = Math.cos(angle + Math.PI / 2) * (wallGap / 2);
+                      const perpY = Math.sin(angle + Math.PI / 2) * (wallGap / 2);
+                      
+                      // Store wall geometry points
+                      wallPoints.push({
+                        start: { x: segment.start.x, y: segment.start.y },
+                        end: { x: segment.end.x, y: segment.end.y },
+                        perpX, perpY, angle, index
+                      });
+                    });
+                    
+                    // Render each wall segment as a simple rectangle
+                    const wallSegments = [];
+                    
+                    for (let i = 0; i < wallPoints.length; i++) {
+                      const current = wallPoints[i];
+                      
+                      // Calculate the four corners of the wall rectangle
+                      const outerStartX = current.start.x + current.perpX;
+                      const outerStartY = current.start.y + current.perpY;
+                      const outerEndX = current.end.x + current.perpX;
+                      const outerEndY = current.end.y + current.perpY;
+                      
+                      const innerStartX = current.start.x - current.perpX;
+                      const innerStartY = current.start.y - current.perpY;
+                      const innerEndX = current.end.x - current.perpX;
+                      const innerEndY = current.end.y - current.perpY;
+                      
+                      // Create rectangle path for this wall segment
+                      const wallRectPath = `M ${outerStartX} ${outerStartY} L ${outerEndX} ${outerEndY} L ${innerEndX} ${innerEndY} L ${innerStartX} ${innerStartY} Z`;
+                      
+                      wallSegments.push(
+                        <path
+                          key={`wall-segment-${i}`}
+                          d={wallRectPath}
+                          fill="none"
+                          stroke={asset.lineColor ?? "#3B82F6"}
+                          strokeWidth={wallThickness}
+                        />
+                      );
+                    }
+                    
+                    return (
+                      <g>
+                        {wallSegments}
+                      </g>
+                    );
+                  })()}
                 </svg>
               </div>
               

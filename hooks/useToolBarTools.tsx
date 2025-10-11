@@ -1,14 +1,13 @@
 import React from "react";
 import {
-  FaPaperPlane,
-  FaPuzzlePiece,
-  FaShapes,
-  FaPencilRuler,
-  FaColumns,
-  FaBriefcase,
-  FaPen,
+  FaMousePointer,
+  FaEdit,
+  FaComment,
+  FaMagnet,
+  FaDownload,
+  FaBox,
+  FaPenNib,
 } from "react-icons/fa";
-import { RiPushpinLine } from "react-icons/ri";
 
 export interface ToolOption {
   id: string;
@@ -24,43 +23,68 @@ export interface Tool {
 export function useToolbarTools(): Tool[] {
   return [
     {
-      icon: <FaPaperPlane size={18} />,
-      label: "Tool 1",
+      icon: <FaMousePointer size={18} />,
+      label: "Selection",
       options: [
-        { id: "toggle-preview", label: "Toggle Preview" },
-        { id: "reset-layout", label: "Reset Layout" },
+        { id: "pointer-select", label: "Pointer" },
+        { id: "rectangular-select", label: "Rectangular Selector" },
       ],
     },
     {
-      icon: <FaPuzzlePiece size={18} />,
-      label: "Tool 2",
+      icon: <FaBox size={18} />,
+      label: "Assets",
       options: [
         { id: "open-assets", label: "Assets" },
       ],
     },
     {
-      icon: <FaPen size={18} />,
-      label: "Tool 3",
-      options: [{ id: "draw-line", label: "Draw Line" }, { id: "draw-wall", label: "Draw Wall" }, { id: "add-text", label: "Add Text" }],
+      icon: <FaPenNib size={18} />,
+      label: "Drawing",
+      options: [
+        { id: "draw-line", label: "Draw Line" }, 
+        { id: "draw-wall", label: "Draw Wall" }, 
+        { id: "add-text", label: "Add Text" }
+      ],
     },
     {
-      icon: <RiPushpinLine size={18} />,
-      label: "Tool 4",
-      options: [{ id: "pin-toolbar", label: "Pin Toolbar" }],
+      icon: <FaEdit size={18} />,
+      label: "Modify",
+      options: [
+        { id: "trim", label: "Trim" },
+        { id: "move", label: "Move" },
+        { id: "copy", label: "Copy" },
+        { id: "rotate", label: "Rotate" },
+        { id: "group", label: "Group" },
+        { id: "ungroup", label: "Ungroup" },
+        { id: "align", label: "Align" },
+        { id: "array", label: "Array" },
+      ],
     },
     {
-      icon: <FaPencilRuler size={18} />,
-      label: "Tool 5",
-      options: [{ id: "toggle-edit-mode", label: "Toggle Edit Mode" }],
+      icon: <FaComment size={18} />,
+      label: "Annotations",
+      options: [
+        { id: "label-arrow", label: "Label with Arrow" },
+        { id: "dimensions", label: "Dimensions" },
+        { id: "text-annotation", label: "Text" },
+      ],
     },
     {
-      icon: <FaColumns size={18} />,
-      label: "Tool 6",
-      options: [{ id: "split-view", label: "Split View" }],
+      icon: <FaMagnet size={18} />,
+      label: "Snapping",
+      options: [
+        { id: "snap-toggle", label: "Toggle Snapping" },
+        { id: "snap-endpoint", label: "Snap to Endpoint" },
+        { id: "snap-midpoint", label: "Snap to Midpoint" },
+        { id: "snap-center", label: "Snap to Center" },
+        { id: "snap-intersection", label: "Snap to Intersection" },
+        { id: "snap-perpendicular", label: "Snap to Perpendicular" },
+        { id: "snap-grid", label: "Snap to Grid" },
+      ],
     },
     {
-      icon: <FaBriefcase size={18} />,
-      label: "Tool 7",
+      icon: <FaDownload size={18} />,
+      label: "Export",
       options: [{ id: "export-project", label: "Export Project" }],
     },
   ];

@@ -26,6 +26,12 @@ export default function PropertiesSidebar(): React.JSX.Element {
   const showGrid = useSceneStore((s) => s.showGrid);
   const toggleGrid = useSceneStore((s) => s.toggleGrid);
   const addAsset = useSceneStore((s) => s.addAsset);
+  
+  // Wall drawing state
+  const wallDrawingMode = useSceneStore((s) => s.wallDrawingMode);
+  const currentWallSegments = useSceneStore((s) => s.currentWallSegments);
+  const finishWallDrawing = useSceneStore((s) => s.finishWallDrawing);
+  const cancelWallDrawing = useSceneStore((s) => s.cancelWallDrawing);
 
   const [showModel, setShowModel] = useState(true);
   const [showCanvas, setShowCanvas] = useState(true);
@@ -131,6 +137,30 @@ export default function PropertiesSidebar(): React.JSX.Element {
                 </button>
               </div>
             </div>
+
+            {/* Wall Drawing Controls */}
+            {wallDrawingMode && (
+              <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="text-xs font-medium text-blue-800 mb-2">Wall Drawing</div>
+                <div className="text-xs text-blue-600 mb-3">
+                  Segments: {currentWallSegments.length}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={finishWallDrawing}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 px-3 rounded shadow"
+                  >
+                    Finish Wall
+                  </button>
+                  <button
+                    onClick={cancelWallDrawing}
+                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white text-xs py-2 px-3 rounded shadow"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
 
             {/* Transform Controls */}
